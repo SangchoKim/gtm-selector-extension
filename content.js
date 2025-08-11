@@ -21,6 +21,8 @@ class GTMSelectorHelper {
   initializeMessageListener() {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       this.handleMessage(message, sender, sendResponse);
+      // 비동기 응답을 위해 true 반환
+      return true;
     });
   }
 
@@ -479,26 +481,42 @@ class GTMSelectorHelper {
 }
 
 // Content script 초기화
-let gtmSelectorHelper;
+(function () {
+  'use strict';
 
-// 전역 참조를 위해 window에 추가
-window.gtmSelectorHelper = null;
-
-// DOM이 준비되면 초기화
-function initializeGTMHelper() {
-  try {
-    if (!window.gtmSelectorHelper) {
-      gtmSelectorHelper = new GTMSelectorHelper();
-      window.gtmSelectorHelper = gtmSelectorHelper;
-      console.log('GTM Selector Helper initialized');
-    }
-  } catch (error) {
-    console.error('Failed to initialize GTM Selector Helper:', error);
+  // 이미 초기화되었는지 확인
+  if (window.gtmSelectorHelper) {
+    console.log('GTM Selector Helper already initialized');
+    return;
   }
-}
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeGTMHelper);
-} else {
-  initializeGTMHelper();
-}
+  // DOM이 준비되면 초기화
+  function initializeGTMHelper() {
+    try {
+      console.log('Initializing GTM Selector Helper...');
+      const helper = new GTMSelectorHelper();
+      window.gtmSelectorHelper = helper;
+
+      // 페이지 언로드 시 정리
+      window.addEventListener('beforeunload', () => {
+        if (window.gtmSelectorHelper) {
+          try {
+            window.gtmSelectorHelper.deactivateInspector();
+          } catch (e) {
+            console.log('Cleanup error:', e);
+          }
+        }
+      });
+
+      console.log('GTM Selector Helper initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize GTM Selector Helper:', error);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeGTMHelper);
+  } else {
+    initializeGTMHelper();
+  }
+})();

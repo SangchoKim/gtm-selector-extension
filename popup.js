@@ -98,16 +98,10 @@ class PopupController {
 
       this.currentTabId = tab.id;
 
-      // content script와 통신하여 상태 확인
-      const response = await chrome.tabs.sendMessage(tab.id, {
-        action: 'getStatus',
-      });
-
-      if (response) {
-        this.updateStatus(response.isActive, response.selectedElement);
-      }
+      // 초기 상태는 비활성으로 설정 (content script가 아직 주입되지 않았으므로)
+      this.updateStatus(false);
     } catch (error) {
-      console.log('Content script not ready:', error);
+      console.log('Failed to get tab info:', error);
       this.updateStatus(false);
     }
   }
@@ -120,18 +114,35 @@ class PopupController {
         return;
       }
 
-      // 먼저 content script가 주입되었는지 확인
+      // URL이 chrome:// 또는 file:// 등의 제한된 프로토콜인지 확인
+      const tab = await chrome.tabs.get(this.currentTabId);
+      if (
+        !tab.url ||
+        tab.url.startsWith('chrome://') ||
+        tab.url.startsWith('chrome-extension://') ||
+        tab.url.startsWith('moz-extension://')
+      ) {
+        this.showToast('이 페이지에서는 익스텐션을 사용할 수 없습니다.');
+        this.elements.inspectorToggle.checked = false;
+        return;
+      }
+
+      // content script 강제 주입
       try {
+        console.log('Injecting content script...');
+
+        // 기존 스크립트 정리를 위한 코드 주입
         await chrome.scripting.executeScript({
           target: { tabId: this.currentTabId },
-          func: () => (window.gtmSelectorHelper ? true : false),
-        });
-      } catch (scriptError) {
-        console.log('Content script not injected, injecting now...');
-        // content script 주입
-        await chrome.scripting.executeScript({
-          target: { tabId: this.currentTabId },
-          files: ['content.js'],
+          func: () => {
+            // 기존 GTM Helper 정리
+            if (window.gtmSelectorHelper) {
+              try {
+                window.gtmSelectorHelper.deactivateInspector();
+              } catch (e) {}
+              window.gtmSelectorHelper = null;
+            }
+          },
         });
 
         // CSS 주입
@@ -140,15 +151,55 @@ class PopupController {
           files: ['content.css'],
         });
 
-        // 약간의 지연을 두고 재시도
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // content script 주입
+        await chrome.scripting.executeScript({
+          target: { tabId: this.currentTabId },
+          files: ['content.js'],
+        });
+
+        // 스크립트 초기화 대기
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        // 초기화 확인
+        const [initResult] = await chrome.scripting.executeScript({
+          target: { tabId: this.currentTabId },
+          func: () => {
+            return window.gtmSelectorHelper ? 'ready' : 'not ready';
+          },
+        });
+
+        if (initResult.result !== 'ready') {
+          throw new Error('Content script initialization failed');
+        }
+
+        console.log('Content script injected successfully');
+      } catch (scriptError) {
+        console.error('Script injection error:', scriptError);
+        this.showToast('스크립트 주입에 실패했습니다. 페이지를 새로고침 후 다시 시도해주세요.');
+        this.elements.inspectorToggle.checked = false;
+        return;
       }
 
-      // content script에 토글 명령 전송
-      const response = await chrome.tabs.sendMessage(this.currentTabId, {
-        action: 'toggleInspector',
-        isActive: isActive,
-      });
+      // content script에 토글 명령 전송 (재시도 로직 포함)
+      let response = null;
+      let attempts = 0;
+      const maxAttempts = 3;
+
+      while (attempts < maxAttempts && !response) {
+        try {
+          response = await chrome.tabs.sendMessage(this.currentTabId, {
+            action: 'toggleInspector',
+            isActive: isActive,
+          });
+          break;
+        } catch (messageError) {
+          attempts++;
+          console.log(`Message attempt ${attempts} failed:`, messageError);
+          if (attempts < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+        }
+      }
 
       if (response && response.success) {
         this.isInspectorActive = isActive;
@@ -162,12 +213,17 @@ class PopupController {
         }
       } else {
         this.elements.inspectorToggle.checked = false;
-        this.showToast('검사 모드를 활성화할 수 없습니다.');
+        this.showToast('검사 모드를 활성화할 수 없습니다. 페이지를 새로고침 후 다시 시도해주세요.');
       }
     } catch (error) {
       console.error('Toggle inspector error:', error);
       this.elements.inspectorToggle.checked = false;
-      this.showToast('오류가 발생했습니다. 페이지를 새로고침해 주세요.');
+
+      if (error.message.includes('Cannot access')) {
+        this.showToast('이 페이지에서는 익스텐션을 사용할 수 없습니다.');
+      } else {
+        this.showToast('오류가 발생했습니다. 페이지를 새로고침해 주세요.');
+      }
     }
   }
 
