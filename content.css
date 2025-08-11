@@ -1,0 +1,145 @@
+/* GTM 셀렉터 헬퍼 - Content Script 스타일 */
+
+/* 요소 하이라이트 */
+.gtm-selector-helper-highlight {
+  outline: 2px solid #2563eb !important;
+  outline-offset: 2px !important;
+  cursor: crosshair !important;
+  position: relative !important;
+  z-index: 999999 !important;
+  transition: outline 0.2s ease !important;
+}
+
+.gtm-selector-helper-highlight:hover {
+  outline-color: #1d4ed8 !important;
+  outline-width: 3px !important;
+}
+
+/* 선택된 요소 */
+.gtm-selector-helper-selected {
+  outline: 3px solid #10b981 !important;
+  outline-offset: 2px !important;
+  position: relative !important;
+  z-index: 999999 !important;
+  animation: gtm-selector-helper-pulse 0.5s ease-in-out !important;
+}
+
+@keyframes gtm-selector-helper-pulse {
+  0% {
+    outline-color: #10b981;
+    outline-width: 3px;
+  }
+  50% {
+    outline-color: #059669;
+    outline-width: 5px;
+  }
+  100% {
+    outline-color: #10b981;
+    outline-width: 3px;
+  }
+}
+
+/* 검사기 상태 표시기 */
+.gtm-selector-helper-status {
+  position: fixed !important;
+  top: 20px !important;
+  right: 20px !important;
+  background: rgba(17, 24, 39, 0.9) !important;
+  color: white !important;
+  padding: 8px 16px !important;
+  border-radius: 6px !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  z-index: 1000000 !important;
+  backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+  transition: all 0.3s ease !important;
+  pointer-events: none !important;
+}
+
+.gtm-selector-helper-status.active {
+  background: rgba(16, 185, 129, 0.9) !important;
+}
+
+.gtm-selector-helper-status.error {
+  background: rgba(239, 68, 68, 0.9) !important;
+}
+
+/* 요소 정보 툴팁 */
+.gtm-selector-helper-tooltip {
+  position: absolute !important;
+  background: rgba(17, 24, 39, 0.95) !important;
+  color: white !important;
+  padding: 8px 12px !important;
+  border-radius: 6px !important;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+  font-size: 12px !important;
+  z-index: 1000001 !important;
+  pointer-events: none !important;
+  max-width: 300px !important;
+  word-break: break-all !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(8px) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+.gtm-selector-helper-tooltip::before {
+  content: '' !important;
+  position: absolute !important;
+  top: -6px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 0 !important;
+  height: 0 !important;
+  border-left: 6px solid transparent !important;
+  border-right: 6px solid transparent !important;
+  border-bottom: 6px solid rgba(17, 24, 39, 0.95) !important;
+}
+
+/* 검사 모드 비활성화시 모든 하이라이트 제거 */
+.gtm-selector-helper-disabled .gtm-selector-helper-highlight,
+.gtm-selector-helper-disabled .gtm-selector-helper-selected {
+  outline: none !important;
+  animation: none !important;
+}
+
+/* 페이지 오버레이 (검사 모드 활성화시) */
+.gtm-selector-helper-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: rgba(37, 99, 235, 0.05) !important;
+  z-index: 999998 !important;
+  pointer-events: none !important;
+  transition: background 0.3s ease !important;
+}
+
+/* 반응형 조정 */
+@media (max-width: 768px) {
+  .gtm-selector-helper-status {
+    top: 10px !important;
+    right: 10px !important;
+    font-size: 12px !important;
+    padding: 6px 12px !important;
+  }
+  
+  .gtm-selector-helper-tooltip {
+    max-width: 250px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* 접근성 개선 */
+@media (prefers-reduced-motion: reduce) {
+  .gtm-selector-helper-highlight,
+  .gtm-selector-helper-selected,
+  .gtm-selector-helper-status,
+  .gtm-selector-helper-overlay {
+    transition: none !important;
+    animation: none !important;
+  }
+}
