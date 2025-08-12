@@ -140,6 +140,7 @@ class GTMSelectorHelper {
 
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
 
     const element = event.target;
 
@@ -180,11 +181,15 @@ class GTMSelectorHelper {
     const selectors = this.generateSelectors(element);
     elementInfo.selectors = selectors;
 
-    // popup에 선택 알림
-    chrome.runtime.sendMessage({
-      action: 'elementSelected',
-      elementInfo: elementInfo,
-    });
+    // popup과 background script에 선택 알림
+    chrome.runtime
+      .sendMessage({
+        action: 'elementSelected',
+        elementInfo: elementInfo,
+      })
+      .catch((error) => {
+        console.log('Failed to send elementSelected message:', error);
+      });
 
     // 상태 표시기 업데이트
     this.updateStatusIndicator('요소 선택됨');
@@ -199,7 +204,55 @@ class GTMSelectorHelper {
       className: element.className,
       textContent: element.textContent?.trim().substring(0, 50) || '',
       attributes: this.getElementAttributes(element),
+      path: this.generateDetailedElementPath(element),
     };
+  }
+
+  generateDetailedElementPath(element) {
+    const path = [];
+    let current = element;
+
+    // 최대 3단계까지 부모 요소 포함
+    while (current && current !== document.body && path.length < 3) {
+      let selector = current.tagName.toLowerCase();
+      
+      // ID가 있으면 우선 사용
+      if (current.id) {
+        selector += `#${current.id}`;
+        path.unshift(selector);
+        break; // ID가 있으면 더 이상 올라갈 필요 없음
+      } 
+      // 클래스가 있으면 추가
+      else if (current.className) {
+        const classes = current.className.trim().split(/\s+/).filter(c => c.length > 0);
+        const meaningfulClasses = classes.filter(cls => 
+          !cls.match(/^(css-|sc-|emotion-|styled-)/) && // CSS-in-JS 클래스 제외
+          cls.length > 2 && // 너무 짧은 클래스 제외
+          !cls.match(/^\d/) // 숫자로 시작하는 클래스 제외
+        );
+        
+        if (meaningfulClasses.length > 0) {
+          selector += `.${meaningfulClasses.slice(0, 2).join('.')}`;
+        } else if (classes.length > 0) {
+          selector += `.${classes[0]}`;
+        }
+      }
+      
+      // data attributes 추가 (최대 1개)
+      const dataAttrs = Array.from(current.attributes)
+        .filter(attr => attr.name.startsWith('data-'))
+        .slice(0, 1);
+      
+      if (dataAttrs.length > 0) {
+        const attr = dataAttrs[0];
+        selector += `[${attr.name}="${attr.value}"]`;
+      }
+
+      path.unshift(selector);
+      current = current.parentElement;
+    }
+
+    return path.join(' ');
   }
 
   getElementAttributes(element) {
@@ -211,10 +264,12 @@ class GTMSelectorHelper {
   }
 
   generateSelectors(element) {
+    console.log('Generating selectors for element:', element);
     const selectors = [];
 
     // 1. ID 셀렉터 (최우선순위)
     if (element.id && this.isValidSelector(`#${element.id}`)) {
+      console.log('Adding ID selector:', `#${element.id}`);
       selectors.push({
         type: 'ID',
         selector: `#${element.id}`,
@@ -270,7 +325,9 @@ class GTMSelectorHelper {
     }
 
     // 우선순위별 정렬
-    return selectors.sort((a, b) => a.priority - b.priority);
+    const sortedSelectors = selectors.sort((a, b) => a.priority - b.priority);
+    console.log('Generated selectors:', sortedSelectors);
+    return sortedSelectors;
   }
 
   getDataAttributes(element) {

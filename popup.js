@@ -20,6 +20,8 @@ class PopupController {
       'inspectorToggle',
       'selectedElement',
       'elementName',
+      'selectedPath',
+      'copyPathBtn',
       'emptyState',
       'selectorsList',
       'settingsBtn',
@@ -54,6 +56,17 @@ class PopupController {
     document.addEventListener('click', (e) => {
       if (e.target.closest('.copy-btn')) {
         const button = e.target.closest('.copy-btn');
+        
+        // 선택된 요소 경로 복사 버튼인지 확인
+        if (button.id === 'copyPathBtn') {
+          const path = this.elements.selectedPath?.textContent;
+          if (path) {
+            this.copyToClipboard(path, true);
+          }
+          return;
+        }
+        
+        // 일반 셀렉터 복사 버튼
         const selector = button.dataset.selector;
         if (selector) {
           this.copyToClipboard(selector);
@@ -98,8 +111,22 @@ class PopupController {
 
       this.currentTabId = tab.id;
 
-      // 초기 상태는 비활성으로 설정 (content script가 아직 주입되지 않았으므로)
-      this.updateStatus(false);
+      // background script에서 탭 상태 가져오기
+      try {
+        const response = await chrome.runtime.sendMessage({
+          action: 'getTabState',
+          tabId: this.currentTabId,
+        });
+
+        if (response) {
+          this.updateStatus(response.isInspectorActive, response.selectedElement);
+        } else {
+          this.updateStatus(false);
+        }
+      } catch (error) {
+        console.log('Failed to get tab state:', error);
+        this.updateStatus(false);
+      }
     } catch (error) {
       console.log('Failed to get tab info:', error);
       this.updateStatus(false);
@@ -205,6 +232,12 @@ class PopupController {
         this.isInspectorActive = isActive;
         this.updateUIState();
 
+        // background script에 상태 알리기
+        chrome.runtime.sendMessage({
+          action: 'toggleInspector',
+          isActive: isActive,
+        });
+
         if (isActive) {
           this.showToast('검사 모드가 활성화되었습니다. 페이지에서 요소를 클릭하세요.');
         } else {
@@ -251,6 +284,13 @@ class PopupController {
     if (this.selectedElement) {
       this.elements.selectedElement.style.display = 'flex';
       this.elements.elementName.textContent = this.getElementDisplayName(this.selectedElement);
+      
+      // 선택된 요소의 경로 표시
+      const elementPath = this.generateElementPath(this.selectedElement);
+      if (this.elements.selectedPath) {
+        this.elements.selectedPath.textContent = elementPath;
+      }
+      
       this.showSelectorsList();
     } else {
       this.elements.selectedElement.style.display = 'none';
@@ -269,13 +309,52 @@ class PopupController {
     }
   }
 
+  generateElementPath(elementInfo) {
+    if (!elementInfo || !elementInfo.path) {
+      // 기본 경로 생성
+      let path = elementInfo.tagName.toLowerCase();
+      
+      if (elementInfo.id) {
+        path += `#${elementInfo.id}`;
+      } else if (elementInfo.className) {
+        const classes = elementInfo.className.split(' ').filter(c => c.length > 0);
+        if (classes.length > 0) {
+          path += `.${classes.slice(0, 2).join('.')}`;
+        }
+      }
+      
+      // data attributes 추가
+      if (elementInfo.attributes) {
+        const dataAttrs = Object.entries(elementInfo.attributes)
+          .filter(([name]) => name.startsWith('data-'))
+          .slice(0, 2); // 최대 2개까지만
+        
+        if (dataAttrs.length > 0) {
+          dataAttrs.forEach(([name, value]) => {
+            path += `[${name}="${value}"]`;
+          });
+        }
+      }
+      
+      return path;
+    }
+    
+    return elementInfo.path;
+  }
+
   showSelectorsList() {
+    console.log('showSelectorsList called');
+    console.log('Selected element:', this.selectedElement);
+
     this.elements.emptyState.style.display = 'none';
     this.elements.selectorsList.style.display = 'block';
 
     // 실제 셀렉터 데이터로 업데이트
     if (this.selectedElement && this.selectedElement.selectors) {
+      console.log('Updating selectors display with:', this.selectedElement.selectors);
       this.updateSelectorsDisplay(this.selectedElement.selectors);
+    } else {
+      console.log('No selectors found in selectedElement');
     }
   }
 
@@ -285,14 +364,23 @@ class PopupController {
   }
 
   updateSelectorsDisplay(selectors) {
+    console.log('updateSelectorsDisplay called with:', selectors);
+
+    if (!selectors || selectors.length === 0) {
+      console.log('No selectors to display');
+      return;
+    }
+
     // 기존 동적 콘텐츠 제거
     const existingCards = this.elements.selectorsList.querySelectorAll(
       '.selector-card[data-dynamic="true"]'
     );
+    console.log('Removing existing cards:', existingCards.length);
     existingCards.forEach((card) => card.remove());
 
     // 새로운 셀렉터 카드 생성
     selectors.forEach((selectorInfo, index) => {
+      console.log(`Creating card ${index}:`, selectorInfo);
       const card = this.createSelectorCard(selectorInfo, index);
       this.elements.selectorsList.appendChild(card);
     });
@@ -301,9 +389,12 @@ class PopupController {
     const defaultCards = this.elements.selectorsList.querySelectorAll(
       '.selector-card:not([data-dynamic="true"])'
     );
+    console.log('Hiding default cards:', defaultCards.length);
     defaultCards.forEach((card) => {
       card.style.display = 'none';
     });
+
+    console.log('Selectors display updated successfully');
   }
 
   createSelectorCard(selectorInfo, index) {
@@ -376,10 +467,15 @@ class PopupController {
     return iconSvgs[type] || iconSvgs['Class'];
   }
 
-  async copyToClipboard(selector) {
+  async copyToClipboard(selector, isPath = false) {
     try {
       await navigator.clipboard.writeText(selector);
-      this.showToast(`셀렉터가 복사되었습니다: ${selector}`);
+      
+      if (isPath) {
+        this.showToast(`요소 경로가 복사되었습니다: ${selector}`);
+      } else {
+        this.showToast(`셀렉터가 복사되었습니다: ${selector}`);
+      }
     } catch (error) {
       console.error('Copy failed:', error);
       this.showToast('복사에 실패했습니다.');
@@ -408,17 +504,46 @@ class PopupController {
   }
 
   handleMessage(message, sender, sendResponse) {
+    console.log('Popup received message:', message);
+
     switch (message.action) {
       case 'elementSelected':
         this.selectedElement = message.elementInfo;
+        console.log('Element selected in popup:', this.selectedElement);
         this.updateUIState();
         this.showToast('요소가 선택되었습니다.');
+
+        // background script에도 알리기
+        chrome.runtime
+          .sendMessage({
+            action: 'elementSelected',
+            elementInfo: message.elementInfo,
+          })
+          .catch((error) => {
+            console.log('Failed to notify background script:', error);
+          });
         break;
+
       case 'inspectorDeactivated':
         this.isInspectorActive = false;
         this.elements.inspectorToggle.checked = false;
         this.updateUIState();
+
+        // background script에도 알리기
+        chrome.runtime
+          .sendMessage({
+            action: 'toggleInspector',
+            isActive: false,
+          })
+          .catch((error) => {
+            console.log('Failed to notify background script:', error);
+          });
         break;
+    }
+
+    // 응답 보내기
+    if (sendResponse) {
+      sendResponse({ received: true });
     }
   }
 
