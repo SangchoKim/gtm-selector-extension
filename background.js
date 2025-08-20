@@ -92,6 +92,17 @@ class BackgroundService {
         sendResponse({ success: true });
         break;
 
+      case 'openDetachedWindow':
+        this.openDetachedWindowWithSelectors(message.elementInfo)
+          .then(() => {
+            sendResponse({ success: true });
+          })
+          .catch((error) => {
+            console.error('Failed to open detached window:', error);
+            sendResponse({ success: false, error: error.message });
+          });
+        return true; // 비동기 응답을 위해 true 반환
+
       case 'logEvent':
         this.logEvent(message.event, message.data);
         sendResponse({ success: true });
@@ -289,6 +300,55 @@ class BackgroundService {
     } catch (error) {
       console.error('Failed to save settings:', error);
       return false;
+    }
+  }
+
+  async openDetachedWindowWithSelectors(elementInfo) {
+    try {
+      console.log('Opening detached window with element info:', elementInfo);
+
+      // detached window 생성
+      const detachedWindow = await chrome.windows.create({
+        url: chrome.runtime.getURL('popup-detached.html'),
+        type: 'popup',
+        width: 440,
+        height: 620,
+        focused: true,
+      });
+
+      // 창이 로드될 때까지 잠시 대기
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // 생성된 창의 탭에 선택된 요소 정보 전송
+      const tabs = await chrome.tabs.query({ windowId: detachedWindow.id });
+      if (tabs.length > 0) {
+        const tabId = tabs[0].id;
+
+        // detached window에 요소 정보 전송
+        await chrome.tabs
+          .sendMessage(tabId, {
+            action: 'setSelectedElement',
+            elementInfo: elementInfo,
+          })
+          .catch((error) => {
+            console.log(
+              'Failed to send element info to detached window, trying alternative approach:',
+              error
+            );
+
+            // 대안: storage를 통해 데이터 전달
+            chrome.storage.local.set({
+              pendingElementInfo: elementInfo,
+              pendingTimestamp: Date.now(),
+            });
+          });
+      }
+
+      console.log('Detached window opened successfully');
+      return detachedWindow;
+    } catch (error) {
+      console.error('Error opening detached window:', error);
+      throw error;
     }
   }
 }

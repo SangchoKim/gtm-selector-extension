@@ -3,7 +3,7 @@
   "name": "GTM 셀렉터 헬퍼",
   "version": "1.0.0",
   "description": "Google Tag Manager용 CSS 셀렉터를 쉽게 생성하는 도구",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
   "action": {
     "default_popup": "popup.html",
     "default_title": "GTM 셀렉터 헬퍼",
@@ -24,7 +24,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["content.css"],
+      "resources": ["content.css", "popup-detached.html"],
       "matches": ["<all_urls>"]
     }
   ]

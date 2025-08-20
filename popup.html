@@ -24,8 +24,16 @@
             <p>CSS 셀렉터 생성</p>
           </div>
         </div>
-        <div class="status-badge" id="statusBadge">
-          <span id="statusText">대기</span>
+        <div class="header-actions">
+          <button class="pin-btn" id="pinBtn" title="새 창에서 열기">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/>
+              <path d="m12 12 4 10 1.7-4.3L22 16Z"/>
+            </svg>
+          </button>
+          <div class="status-badge" id="statusBadge">
+            <span id="statusText">대기</span>
+          </div>
         </div>
       </div>
     </div>
@@ -83,6 +91,23 @@
           </svg>
         </div>
         <p>검사 모드를 켜고 페이지 요소를 선택하세요</p>
+      </div>
+
+      <!-- Selected Element Summary in Results -->
+      <div class="selected-summary" id="selectedSummary" style="display: none;">
+        <div class="summary-header">
+          <div class="element-info">
+            <span class="element-tag" id="summaryElementTag"></span>
+            <span class="element-desc" id="summaryElementDesc"></span>
+          </div>
+          <button class="copy-btn summary-copy-btn" id="summaryElementCopyBtn" title="선택된 요소 경로 복사">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+              <path d="m4 16c-1.1 0-2-.9-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+            </svg>
+          </button>
+        </div>
+        <div class="element-path-display" id="summaryElementPath"></div>
       </div>
 
       <div class="selectors-list" id="selectorsList" style="display: none;">

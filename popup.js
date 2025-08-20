@@ -17,12 +17,18 @@ class PopupController {
     const elementIds = [
       'statusBadge',
       'statusText',
+      'pinBtn',
       'inspectorToggle',
       'selectedElement',
       'elementName',
       'selectedPath',
       'copyPathBtn',
       'emptyState',
+      'selectedSummary',
+      'summaryElementTag',
+      'summaryElementDesc',
+      'summaryElementPath',
+      'summaryElementCopyBtn',
       'selectorsList',
       'settingsBtn',
       'helpBtn',
@@ -56,7 +62,7 @@ class PopupController {
     document.addEventListener('click', (e) => {
       if (e.target.closest('.copy-btn')) {
         const button = e.target.closest('.copy-btn');
-        
+
         // 선택된 요소 경로 복사 버튼인지 확인
         if (button.id === 'copyPathBtn') {
           const path = this.elements.selectedPath?.textContent;
@@ -65,7 +71,16 @@ class PopupController {
           }
           return;
         }
-        
+
+        // 요약 섹션 복사 버튼인지 확인
+        if (button.id === 'summaryElementCopyBtn') {
+          const path = this.elements.summaryElementPath?.textContent;
+          if (path) {
+            this.copyToClipboard(path, true);
+          }
+          return;
+        }
+
         // 일반 셀렉터 복사 버튼
         const selector = button.dataset.selector;
         if (selector) {
@@ -73,6 +88,13 @@ class PopupController {
         }
       }
     });
+
+    // 고정 버튼 이벤트
+    if (this.elements.pinBtn) {
+      this.elements.pinBtn.addEventListener('click', () => {
+        this.openDetachedWindow();
+      });
+    }
 
     // 푸터 버튼 이벤트
     if (this.elements.settingsBtn) {
@@ -166,9 +188,43 @@ class PopupController {
             if (window.gtmSelectorHelper) {
               try {
                 window.gtmSelectorHelper.deactivateInspector();
-              } catch (e) {}
+              } catch (e) {
+                console.log('Error during deactivation:', e);
+              }
               window.gtmSelectorHelper = null;
             }
+
+            // DOM에서 기존 요소들 강제 제거
+            const elementsToRemove = [
+              '.gtm-selector-helper-status',
+              '.gtm-selector-helper-tooltip',
+              '.gtm-selector-helper-overlay',
+              '.gtm-overlay-popup',
+              '.gtm-toast',
+            ];
+
+            elementsToRemove.forEach((selector) => {
+              const elements = document.querySelectorAll(selector);
+              elements.forEach((el) => el.remove());
+            });
+
+            // 클래스 정리
+            document.body.classList.remove(
+              'gtm-selector-helper-active',
+              'gtm-selector-helper-disabled'
+            );
+
+            // 하이라이트 클래스 제거
+            document
+              .querySelectorAll('.gtm-selector-helper-highlight, .gtm-selector-helper-selected')
+              .forEach((el) => {
+                el.classList.remove(
+                  'gtm-selector-helper-highlight',
+                  'gtm-selector-helper-selected'
+                );
+              });
+
+            console.log('GTM Helper cleanup completed');
           },
         });
 
@@ -240,6 +296,10 @@ class PopupController {
 
         if (isActive) {
           this.showToast('검사 모드가 활성화되었습니다. 페이지에서 요소를 클릭하세요.');
+          // 검사 모드 활성화 시 팝업 닫기
+          setTimeout(() => {
+            window.close();
+          }, 1000);
         } else {
           this.showToast('검사 모드가 비활성화되었습니다.');
           this.clearSelection();
@@ -284,13 +344,13 @@ class PopupController {
     if (this.selectedElement) {
       this.elements.selectedElement.style.display = 'flex';
       this.elements.elementName.textContent = this.getElementDisplayName(this.selectedElement);
-      
+
       // 선택된 요소의 경로 표시
       const elementPath = this.generateElementPath(this.selectedElement);
       if (this.elements.selectedPath) {
         this.elements.selectedPath.textContent = elementPath;
       }
-      
+
       this.showSelectorsList();
     } else {
       this.elements.selectedElement.style.display = 'none';
@@ -313,32 +373,32 @@ class PopupController {
     if (!elementInfo || !elementInfo.path) {
       // 기본 경로 생성
       let path = elementInfo.tagName.toLowerCase();
-      
+
       if (elementInfo.id) {
         path += `#${elementInfo.id}`;
       } else if (elementInfo.className) {
-        const classes = elementInfo.className.split(' ').filter(c => c.length > 0);
+        const classes = elementInfo.className.split(' ').filter((c) => c.length > 0);
         if (classes.length > 0) {
           path += `.${classes.slice(0, 2).join('.')}`;
         }
       }
-      
+
       // data attributes 추가
       if (elementInfo.attributes) {
         const dataAttrs = Object.entries(elementInfo.attributes)
           .filter(([name]) => name.startsWith('data-'))
           .slice(0, 2); // 최대 2개까지만
-        
+
         if (dataAttrs.length > 0) {
           dataAttrs.forEach(([name, value]) => {
             path += `[${name}="${value}"]`;
           });
         }
       }
-      
+
       return path;
     }
-    
+
     return elementInfo.path;
   }
 
@@ -347,10 +407,15 @@ class PopupController {
     console.log('Selected element:', this.selectedElement);
 
     this.elements.emptyState.style.display = 'none';
+    this.elements.selectedSummary.style.display = 'block';
     this.elements.selectorsList.style.display = 'block';
+
+    // 요약 정보 업데이트
+    this.updateSummaryDisplay();
 
     // 실제 셀렉터 데이터로 업데이트
     if (this.selectedElement && this.selectedElement.selectors) {
+      셀;
       console.log('Updating selectors display with:', this.selectedElement.selectors);
       this.updateSelectorsDisplay(this.selectedElement.selectors);
     } else {
@@ -360,7 +425,30 @@ class PopupController {
 
   hideSelectorsList() {
     this.elements.emptyState.style.display = 'block';
+    this.elements.selectedSummary.style.display = 'none';
     this.elements.selectorsList.style.display = 'none';
+  }
+
+  updateSummaryDisplay() {
+    if (!this.selectedElement) return;
+
+    // 태그 이름 표시
+    if (this.elements.summaryElementTag) {
+      this.elements.summaryElementTag.textContent =
+        this.selectedElement.tagName?.toLowerCase() || 'element';
+    }
+
+    // 설명 표시
+    if (this.elements.summaryElementDesc) {
+      const desc = this.getElementDisplayName(this.selectedElement);
+      this.elements.summaryElementDesc.textContent = desc;
+    }
+
+    // 경로 표시
+    if (this.elements.summaryElementPath) {
+      const path = this.generateElementPath(this.selectedElement);
+      this.elements.summaryElementPath.textContent = path;
+    }
   }
 
   updateSelectorsDisplay(selectors) {
@@ -470,7 +558,7 @@ class PopupController {
   async copyToClipboard(selector, isPath = false) {
     try {
       await navigator.clipboard.writeText(selector);
-      
+
       if (isPath) {
         this.showToast(`요소 경로가 복사되었습니다: ${selector}`);
       } else {
@@ -544,6 +632,27 @@ class PopupController {
     // 응답 보내기
     if (sendResponse) {
       sendResponse({ received: true });
+    }
+  }
+
+  async openDetachedWindow() {
+    try {
+      // 새 창에서 독립 팝업 열기
+      const detachedWindow = await chrome.windows.create({
+        url: chrome.runtime.getURL('popup-detached.html'),
+        type: 'popup',
+        width: 440,
+        height: 620,
+        focused: true,
+      });
+
+      this.showToast('독립 창에서 열었습니다.');
+
+      // 현재 팝업 창 닫기 (선택사항)
+      // window.close();
+    } catch (error) {
+      console.error('Failed to open detached window:', error);
+      this.showToast('독립 창을 열 수 없습니다.');
     }
   }
 
