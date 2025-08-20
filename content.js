@@ -267,6 +267,7 @@ class GTMSelectorHelper {
         const meaningfulClasses = classes.filter(
           (cls) =>
             !cls.match(/^(css-|sc-|emotion-|styled-)/) && // CSS-in-JS 클래스 제외
+            !cls.startsWith('gtm-selector-helper-') && // GTM 헬퍼 클래스 제외
             cls.length > 2 && // 너무 짧은 클래스 제외
             !cls.match(/^\d/) // 숫자로 시작하는 클래스 제외
         );
@@ -311,11 +312,12 @@ class GTMSelectorHelper {
     if (element.id && this.isValidSelector(`#${element.id}`)) {
       console.log('Adding ID selector:', `#${element.id}`);
       const baseSelector = `#${element.id}`;
+      const gtmSelector = this.generateGTMSelector(element, baseSelector);
       selectors.push({
         type: 'ID',
         selector: baseSelector,
-        gtmSelector: `${baseSelector}, ${baseSelector} *`,
-        description: '가장 안정적인 셀렉터',
+        gtmSelector: gtmSelector,
+        description: 'GTM에서 가장 안정적인 셀렉터',
         priority: 1,
       });
     }
@@ -325,11 +327,12 @@ class GTMSelectorHelper {
     dataAttributes.forEach((attr) => {
       const baseSelector = `[${attr.name}="${attr.value}"]`;
       if (this.isValidSelector(baseSelector)) {
+        const gtmSelector = this.generateGTMSelector(element, baseSelector);
         selectors.push({
           type: 'Data Attribute',
           selector: baseSelector,
-          gtmSelector: `${baseSelector}, ${baseSelector} *`,
-          description: '테스트 전용 속성 (권장)',
+          gtmSelector: gtmSelector,
+          description: 'GTM에서 권장하는 테스트 전용 속성',
           priority: 2,
         });
       }
@@ -339,20 +342,24 @@ class GTMSelectorHelper {
     if (element.className) {
       const classSelector = this.generateClassSelector(element);
       if (classSelector && this.isValidSelector(classSelector)) {
+        const gtmSelector = this.generateGTMSelector(element, classSelector);
         selectors.push({
           type: 'Class',
           selector: classSelector,
-          gtmSelector: `${classSelector}, ${classSelector} *`,
-          description: '일반적으로 안정적',
+          gtmSelector: gtmSelector,
+          description: 'GTM에서 일반적으로 안정적',
           priority: 3,
         });
       }
     }
 
-    // 4. 기타 속성 셀렉터
+    // 4. 기타 속성 셀렉터 (aria-label, name, type 등)
     const attributeSelectors = this.generateAttributeSelectors(element);
     attributeSelectors.forEach((selectorInfo) => {
       if (this.isValidSelector(selectorInfo.selector)) {
+        const gtmSelector = this.generateGTMSelector(element, selectorInfo.selector);
+        selectorInfo.gtmSelector = gtmSelector;
+        selectorInfo.description = `GTM에서 ${selectorInfo.description}`;
         selectors.push(selectorInfo);
       }
     });
@@ -360,11 +367,12 @@ class GTMSelectorHelper {
     // 5. 구조적 셀렉터 (최후 수단)
     const structuralSelector = this.generateStructuralSelector(element);
     if (structuralSelector && this.isValidSelector(structuralSelector)) {
+      const gtmSelector = this.generateGTMSelector(element, structuralSelector);
       selectors.push({
         type: 'Structural',
         selector: structuralSelector,
-        gtmSelector: `${structuralSelector}, ${structuralSelector} *`,
-        description: '구조 변경에 취약',
+        gtmSelector: gtmSelector,
+        description: 'GTM에서 구조 변경에 취약한 셀렉터',
         priority: 9,
       });
     }
@@ -373,6 +381,105 @@ class GTMSelectorHelper {
     const sortedSelectors = selectors.sort((a, b) => a.priority - b.priority);
     console.log('Generated selectors:', sortedSelectors);
     return sortedSelectors;
+  }
+
+  // GTM 콘솔에서 직접 사용할 수 있는 형식의 셀렉터 생성
+  generateGTMSelector(element, baseSelector) {
+    const tagName = element.tagName.toLowerCase();
+
+    // 1. 태그명 + 속성 조합 우선 (예: button[aria-label="submit"], input[type="email"])
+    const importantAttrs = [
+      'aria-label', 
+      'data-testid',
+      'data-cy',
+      'data-qa',
+      'data-automation-id',
+      'name',
+      'type',
+      'role',
+      'data-button-type',
+      'data-link-type'
+    ];
+
+    for (const attrName of importantAttrs) {
+      const attrValue = element.getAttribute(attrName);
+      if (attrValue) {
+        // 특수 문자 이스케이핑
+        const escapedValue = attrValue.replace(/"/g, '\\"');
+        return `${tagName}[${attrName}="${escapedValue}"]`;
+      }
+    }
+
+    // 2. ID가 있는 경우 태그명 + ID
+    if (element.id) {
+      return `${tagName}#${element.id}`;
+    }
+
+    // 3. 클래스가 있는 경우 태그명 + 의미있는 클래스
+    if (element.className) {
+      const classes = element.className
+        .trim()
+        .split(/\s+/)
+        .filter((c) => c.length > 0);
+      const meaningfulClasses = classes.filter(
+        (cls) =>
+          !cls.match(/^(css-|sc-|emotion-|styled-)/) && // CSS-in-JS 제외
+          !cls.startsWith('gtm-selector-helper-') && // GTM 헬퍼 클래스 제외
+          cls.length > 2 && // 너무 짧은 클래스 제외
+          !cls.match(/^\d/) // 숫자로 시작하는 클래스 제외
+      );
+
+      if (meaningfulClasses.length > 0) {
+        // 모듈 해시가 포함된 클래스명 정리 (예: ContentHeaderView-module__content_header___nSgPg -> content_header)
+        const cleanedClasses = meaningfulClasses.map(cls => {
+          // CSS 모듈 패턴 감지 및 정리
+          if (cls.includes('__') && cls.includes('___')) {
+            const parts = cls.split('__');
+            if (parts.length >= 2) {
+              const mainPart = parts[1].split('___')[0];
+              return mainPart || cls;
+            }
+          }
+          return cls;
+        }).filter(cls => cls.length > 2);
+        
+        // 최대 2개 클래스만 사용
+        const selectedClasses = cleanedClasses.slice(0, 2);
+        return `${tagName}.${selectedClasses.join('.')}`;
+      } else if (classes.length > 0) {
+        return `${tagName}.${classes[0]}`;
+      }
+    }
+
+    // 4. 텍스트 내용이 있는 경우 (짧은 텍스트만)
+    const textContent = element.textContent?.trim();
+    if (textContent && textContent.length <= 20 && !textContent.includes('\n')) {
+      const escapedText = textContent.replace(/"/g, '\\"');
+      return `${tagName}:contains("${escapedText}")`;
+    }
+
+    // 5. nth-child로 위치 기반 셀렉터
+    const parent = element.parentElement;
+    if (parent) {
+      const siblings = Array.from(parent.children).filter(
+        (sibling) => sibling.tagName === element.tagName
+      );
+      if (siblings.length > 1) {
+        const index = siblings.indexOf(element) + 1;
+        const parentSelector = parent.tagName.toLowerCase();
+        if (parent.id) {
+          return `#${parent.id} > ${tagName}:nth-child(${index})`;
+        } else if (parent.className) {
+          const parentClass = parent.className.trim().split(/\s+/)[0];
+          return `.${parentClass} > ${tagName}:nth-child(${index})`;
+        } else {
+          return `${parentSelector} > ${tagName}:nth-child(${index})`;
+        }
+      }
+    }
+
+    // 6. 최종 대안: 기본 셀렉터 반환
+    return baseSelector || tagName;
   }
 
   getDataAttributes(element) {
@@ -399,6 +506,7 @@ class GTMSelectorHelper {
     const meaningfulClasses = classes.filter(
       (cls) =>
         !cls.match(/^(css-|sc-|emotion-|styled-)/) && // CSS-in-JS 클래스 제외
+        !cls.startsWith('gtm-selector-helper-') && // GTM 헬퍼 클래스 제외
         cls.length > 2 && // 너무 짧은 클래스 제외
         !cls.match(/^\d/) // 숫자로 시작하는 클래스 제외
     );
@@ -816,7 +924,12 @@ class GTMSelectorHelper {
     const tagDiv = this.overlayPopup.querySelector('.gtm-element-tag');
     const pathDiv = this.overlayPopup.querySelector('.gtm-element-path');
 
-    console.log('DOM elements found:', { statusDiv, selectedDiv, tagDiv, pathDiv });
+    console.log('DOM elements found:', {
+      statusDiv,
+      selectedDiv,
+      tagDiv,
+      pathDiv,
+    });
 
     if (elementInfo) {
       console.log('Showing selected element info');
@@ -829,9 +942,10 @@ class GTMSelectorHelper {
       }
 
       if (pathDiv) {
-        const path = elementInfo.path || this.generateElementPathForOverlay(elementInfo);
-        pathDiv.textContent = path;
-        console.log('Set path text:', path);
+        // GTM 콘솔에서 사용할 수 있는 형식으로 경로 생성
+        const gtmSelector = this.generateGTMSelector(this.selectedElement, '');
+        pathDiv.textContent = gtmSelector;
+        console.log('Set GTM selector text:', gtmSelector);
       }
     } else {
       console.log('Hiding selected element info');
@@ -851,7 +965,10 @@ class GTMSelectorHelper {
         .split(/\s+/)
         .filter((c) => c.length > 0);
       const meaningfulClasses = classes.filter(
-        (cls) => !cls.match(/^(css-|sc-|emotion-|styled-)/) && cls.length > 2 && !cls.match(/^\d/)
+        (cls) => !cls.match(/^(css-|sc-|emotion-|styled-)/) && 
+                !cls.startsWith('gtm-selector-helper-') &&
+                cls.length > 2 && 
+                !cls.match(/^\d/)
       );
 
       if (meaningfulClasses.length > 0) {
@@ -882,13 +999,13 @@ class GTMSelectorHelper {
       return;
     }
 
-    const elementInfo = this.getElementInfo(this.selectedElement);
-    const path = elementInfo.path || this.generateElementPathForOverlay(elementInfo);
+    // GTM 콘솔에서 직접 사용할 수 있는 셀렉터 생성
+    const gtmSelector = this.generateGTMSelector(this.selectedElement, '');
 
     navigator.clipboard
-      .writeText(path)
+      .writeText(gtmSelector)
       .then(() => {
-        this.showToast('경로가 복사되었습니다!');
+        this.showToast(`GTM 셀렉터가 복사되었습니다: ${gtmSelector}`);
       })
       .catch((err) => {
         console.error('복사 실패:', err);
