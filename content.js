@@ -409,30 +409,34 @@ class GTMSelectorHelper {
     // 현재 요소부터 상위로 올라가면서 의미있는 셀렉터 구성
     while (current && current !== document.body && depth < maxDepth) {
       const elementSelector = this.getMeaningfulElementSelector(current);
-      
+
       if (elementSelector) {
         selectorParts.unshift(elementSelector);
         depth++;
-        
+
         // ID가 있으면 더 이상 올라갈 필요 없음 (고유함)
         if (elementSelector.includes('#')) {
           break;
         }
-        
+
         // 유의미한 data attribute가 있으면 충분히 구체적
         if (elementSelector.includes('[data-') || elementSelector.includes('[aria-')) {
           // 한 단계 더 올라가서 컨텍스트 추가
           const parent = current.parentElement;
           if (parent && parent !== document.body) {
             const parentSelector = this.getMeaningfulElementSelector(parent);
-            if (parentSelector && !parentSelector.includes('div') && !parentSelector.includes('span')) {
+            if (
+              parentSelector &&
+              !parentSelector.includes('div') &&
+              !parentSelector.includes('span')
+            ) {
               selectorParts.unshift(parentSelector);
             }
           }
           break;
         }
       }
-      
+
       current = current.parentElement;
     }
 
@@ -440,20 +444,20 @@ class GTMSelectorHelper {
     if (selectorParts.length >= 2) {
       return selectorParts.join(' ');
     }
-    
+
     return null;
   }
 
   // 단일 요소의 의미있는 셀렉터 추출
   getMeaningfulElementSelector(element) {
     if (!element) return null;
-    
+
     const tagName = element.tagName.toLowerCase();
-    
+
     // 1. 중요한 속성들 우선 확인
     const importantAttrs = [
       'aria-label',
-      'data-testid', 
+      'data-testid',
       'data-cy',
       'data-qa',
       'data-automation-id',
@@ -463,7 +467,7 @@ class GTMSelectorHelper {
       'data-button-type',
       'data-link-type',
       'data-component',
-      'data-section'
+      'data-section',
     ];
 
     for (const attrName of importantAttrs) {
@@ -488,7 +492,17 @@ class GTMSelectorHelper {
     }
 
     // 4. semantic HTML tags는 그대로 사용
-    const semanticTags = ['header', 'nav', 'main', 'section', 'article', 'aside', 'footer', 'form', 'fieldset'];
+    const semanticTags = [
+      'header',
+      'nav',
+      'main',
+      'section',
+      'article',
+      'aside',
+      'footer',
+      'form',
+      'fieldset',
+    ];
     if (semanticTags.includes(tagName)) {
       return tagName;
     }
@@ -503,14 +517,18 @@ class GTMSelectorHelper {
 
   // 의미있는 클래스 추출
   getMeaningfulClass(element) {
-    const classes = element.className.trim().split(/\s+/).filter(c => c.length > 0);
-    
-    const meaningfulClasses = classes.filter(cls => 
-      !cls.match(/^(css-|sc-|emotion-|styled-)/) && // CSS-in-JS 제외
-      !cls.startsWith('gtm-selector-helper-') && // GTM 헬퍼 클래스 제외
-      !cls.match(/^[0-9]/) && // 숫자로 시작하는 클래스 제외
-      !cls.match(/^(container|wrapper|content|box|item)$/) && // 너무 일반적인 클래스 제외
-      cls.length > 2
+    const classes = element.className
+      .trim()
+      .split(/\s+/)
+      .filter((c) => c.length > 0);
+
+    const meaningfulClasses = classes.filter(
+      (cls) =>
+        !cls.match(/^(css-|sc-|emotion-|styled-)/) && // CSS-in-JS 제외
+        !cls.startsWith('gtm-selector-helper-') && // GTM 헬퍼 클래스 제외
+        !cls.match(/^[0-9]/) && // 숫자로 시작하는 클래스 제외
+        !cls.match(/^(container|wrapper|content|box|item)$/) && // 너무 일반적인 클래스 제외
+        cls.length > 2
     );
 
     if (meaningfulClasses.length > 0) {
@@ -532,14 +550,15 @@ class GTMSelectorHelper {
         return mainPart && mainPart.length > 2 ? mainPart : className;
       }
     }
-    
+
     // Styled-components 패턴 감지: sc-hash 또는 styled__ComponentName-hash
     if (className.includes('-') && className.length > 10) {
       const parts = className.split('-');
-      const meaningfulParts = parts.filter(part => 
-        part.length > 2 && 
-        !part.match(/^[a-f0-9]{6,}$/) && // 해시 제외
-        !part.match(/^(sc|styled)$/)
+      const meaningfulParts = parts.filter(
+        (part) =>
+          part.length > 2 &&
+          !part.match(/^[a-f0-9]{6,}$/) && // 해시 제외
+          !part.match(/^(sc|styled)$/)
       );
       if (meaningfulParts.length > 0) {
         return meaningfulParts[0];
@@ -555,14 +574,14 @@ class GTMSelectorHelper {
 
     // 1. 태그명 + 속성 조합 우선
     const importantAttrs = [
-      'aria-label', 
+      'aria-label',
       'data-testid',
       'data-cy',
       'data-qa',
       'data-automation-id',
       'name',
       'type',
-      'role'
+      'role',
     ];
 
     for (const attrName of importantAttrs) {
@@ -863,14 +882,6 @@ class GTMSelectorHelper {
               </svg>
               복사
             </button>
-            <button class="gtm-selectors-btn" id="gtmShowSelectors" title="모든 셀렉터 보기">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M4 6h16"/>
-                <path d="M4 12h16"/>
-                <path d="M4 18h16"/>
-              </svg>
-              셀렉터
-            </button>
           </div>
         </div>
       </div>
@@ -1071,10 +1082,11 @@ class GTMSelectorHelper {
         .split(/\s+/)
         .filter((c) => c.length > 0);
       const meaningfulClasses = classes.filter(
-        (cls) => !cls.match(/^(css-|sc-|emotion-|styled-)/) && 
-                !cls.startsWith('gtm-selector-helper-') &&
-                cls.length > 2 && 
-                !cls.match(/^\d/)
+        (cls) =>
+          !cls.match(/^(css-|sc-|emotion-|styled-)/) &&
+          !cls.startsWith('gtm-selector-helper-') &&
+          cls.length > 2 &&
+          !cls.match(/^\d/)
       );
 
       if (meaningfulClasses.length > 0) {
