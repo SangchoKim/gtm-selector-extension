@@ -27,7 +27,7 @@ class GTMSelectorHelper {
     });
   }
 
-  handleMessage(message, sender, sendResponse) {
+  handleMessage(message, _sender, sendResponse) {
     switch (message.action) {
       case 'toggleInspector':
         this.toggleInspector(message.isActive);
@@ -113,6 +113,9 @@ class GTMSelectorHelper {
     this.removeTooltip();
     this.removeOverlayPopup(); // hideOverlayPopup 대신 완전 제거
 
+    // GTM 관련 클래스 완전 정리
+    this.cleanupGTMClasses();
+
     // 페이지에서 검사 모드 클래스 제거
     document.body.classList.remove('gtm-selector-helper-active');
     document.body.classList.add('gtm-selector-helper-disabled');
@@ -125,7 +128,44 @@ class GTMSelectorHelper {
     this.selectedElement = null;
     this.hoveredElement = null;
 
-    console.log('GTM Selector Helper: Inspector deactivated');
+    console.log('GTM Selector Helper: Inspector deactivated and cleaned up');
+
+    // Background script에 비활성화 알림
+    try {
+      chrome.runtime.sendMessage({
+        action: 'inspectorDeactivated',
+      });
+    } catch (error) {
+      console.log('Failed to send deactivation message:', error);
+    }
+  }
+
+  // GTM 관련 클래스 완전 정리
+  cleanupGTMClasses() {
+    try {
+      // 모든 GTM 헬퍼 클래스 제거
+      const elementsWithGTMClasses = document.querySelectorAll('[class*="gtm-selector-helper"]');
+      elementsWithGTMClasses.forEach(element => {
+        const classList = Array.from(element.classList);
+        classList.forEach(className => {
+          if (className.startsWith('gtm-selector-helper-')) {
+            element.classList.remove(className);
+          }
+        });
+      });
+
+      // 남은 GTM 관련 요소 제거
+      const gtmElements = document.querySelectorAll('.gtm-overlay-popup, .gtm-selector-helper-status, .gtm-selector-helper-overlay, .gtm-selector-helper-tooltip');
+      gtmElements.forEach(element => {
+        if (element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      });
+
+      console.log('GTM classes and elements cleaned up');
+    } catch (error) {
+      console.log('Error during GTM cleanup:', error);
+    }
   }
 
   handleMouseOver(event) {
@@ -150,10 +190,9 @@ class GTMSelectorHelper {
     this.showTooltip(element, event);
   }
 
-  handleMouseOut(event) {
+  handleMouseOut() {
     if (!this.isActive) return;
 
-    const element = event.target;
     this.clearHoverHighlight();
     this.removeTooltip();
   }
@@ -1202,16 +1241,33 @@ class GTMSelectorHelper {
 (function () {
   'use strict';
 
-  // 이미 초기화되었는지 확인
+  // 기존 인스턴스가 있다면 정리
   if (window.gtmSelectorHelper) {
-    console.log('GTM Selector Helper already initialized');
-    return;
+    console.log('GTM Selector Helper already exists, cleaning up...');
+    try {
+      window.gtmSelectorHelper.deactivateInspector();
+      if (typeof window.gtmSelectorHelper.cleanupGTMClasses === 'function') {
+        window.gtmSelectorHelper.cleanupGTMClasses();
+      }
+    } catch (e) {
+      console.log('Error cleaning up existing instance:', e);
+    }
+    delete window.gtmSelectorHelper;
   }
 
   // DOM이 준비되면 초기화
   function initializeGTMHelper() {
     try {
       console.log('Initializing GTM Selector Helper...');
+
+      // 페이지의 기존 GTM 관련 요소들 정리
+      const existingGTMElements = document.querySelectorAll('.gtm-overlay-popup, .gtm-selector-helper-status, .gtm-selector-helper-overlay, .gtm-selector-helper-tooltip');
+      existingGTMElements.forEach(element => {
+        if (element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      });
+
       const helper = new GTMSelectorHelper();
       window.gtmSelectorHelper = helper;
 
